@@ -1,24 +1,22 @@
 import pandas as pd
-import numpy as np
-import sqlite3
+import pdb
 
-impute_strategy = {'mean', 'mode', 'min', 'max', 'zero', 'null'}
+impute_strategy = ['null', 'mode', 'mean', 'zero', 'min', 'max']
+categorical_dtypes = ['object', 'category', 'bool']
 
-def read_file(path, format, table=None):
+def read_file(path, table=None):
     """
     Read a file from the specified path based on the given format.
 
     Parameters:
         path (str): File path.
-        format (str): File format (e.g., 'csv', 'xlsx', 'json', 'parquet', etc.).
-        table (str or None): Optional. Table name for SQL format.
-
     Returns:
         DataFrame: DataFrame containing the data read from the file.
 
     Raises:
         Exception: If there is an error reading the file or if an unsupported file format is provided.
     """
+    format = path.split('.')[-1]
     if format == 'csv':
         try:
             df = pd.read_csv(path)
@@ -28,8 +26,8 @@ def read_file(path, format, table=None):
     elif format == 'xlsx' or format == 'excel':
         try:
             df = pd.read_excel(path)
-        except:
-            raise Exception('Error while trying reading excel file, make sure your file is valid')
+        except Exception as e:
+            raise Exception('Error while trying reading excel file, make sure your file is valid. ', e)
     
     elif format == 'json':
         try:
@@ -66,18 +64,6 @@ def read_file(path, format, table=None):
             df = pd.read_html(path)
         except:
             raise Exception('Error while trying reading html file, make sure your file is valid')
-
-    elif format == 'sql':
-        conn = sqlite3.connect(path)
-        if table == None:
-            raise Exception("Please enter table name in sql data base.")
-        else:
-            query = "SELECT * FROM " + table
-        try:
-            df = pd.read_sql(query, conn)
-            conn.close()
-        except:
-            raise Exception('Error while trying reading sql file, make sure your file is valid')
     
     elif format == 'hdf':
         try:
@@ -89,7 +75,7 @@ def read_file(path, format, table=None):
         raise Exception("Unsupported File Format")
     return df
 
-def average(df):
+def average(df, column):
     """
     Calculate the mean of numeric columns in a DataFrame.
 
@@ -100,7 +86,7 @@ def average(df):
         Series: Series containing the mean values of numeric columns.
     """
     # Convert columns to numeric
-    numeric_data = df.apply(pd.to_numeric, errors='coerce')
+    numeric_data = df[column].apply(pd.to_numeric, errors='coerce')
     
     # Calculate mean of numeric columns
     mean_values = numeric_data.mean()
@@ -108,7 +94,7 @@ def average(df):
     # Display mean values
     return mean_values
 
-def min(df):
+def min(df, column):
     """
     Calculate the minimum value of numeric columns in a DataFrame.
 
@@ -119,11 +105,11 @@ def min(df):
         Series: Series containing the minimum values of numeric columns.
     """
     # Convert columns to numeric
-    numeric_data = df.apply(pd.to_numeric, errors='coerce')
+    numeric_data = df[column].apply(pd.to_numeric, errors='coerce')
     min = numeric_data.min()
     return min
 
-def max(df):
+def max(df, column):
     """
     Calculate the maximum value of numeric columns in a DataFrame.
 
@@ -133,11 +119,11 @@ def max(df):
     Returns:
         Series: Series containing the maximum values of numeric columns.
     """
-    numeric_data = df.apply(pd.to_numeric, errors='coerce')
+    numeric_data = df[column].apply(pd.to_numeric, errors='coerce')
     max = numeric_data.max()
     return max
 
-def mode(df):
+def mode(df, column):
     """
     Calculate the mode of each column in a DataFrame.
 
@@ -147,9 +133,9 @@ def mode(df):
     Returns:
         DataFrame: DataFrame containing the mode of each column.
     """
-    return df.mode()
+    return df[column].mode().iloc[0]
 
-def impute(df, strategy='zero'):
+def impute(df, column, strategy=1):
     """
     Impute missing values in a DataFrame based on the specified strategy.
 
@@ -164,31 +150,20 @@ def impute(df, strategy='zero'):
     Raises:
         Exception: If an unsupported imputation strategy is provided.
     """
-    if strategy == 'mean':
-        filled_df = df.fillna(average(df))
-    elif strategy == 'mode':
-        filled_df = df.fillna(mode(df))
-    elif strategy == 'min':
-        filled_df = df.fillna(min(df))
-    elif strategy == 'max':
-        filled_df = df.fillna(max(df))
-    elif strategy == 'zero':
-        filled_df = df.fillna(0)    
+
+    if impute_strategy[strategy] == 'mean':
+        df[column].fillna(average(df, column), inplace= True)
+    elif impute_strategy[strategy] == 'mode':
+        df[column].fillna(mode(df, column), inplace= True)
+    elif impute_strategy[strategy] == 'min':
+        df[column].fillna(min(df, column), inplace= True)
+    elif impute_strategy[strategy] == 'max':
+        df[column].fillna(max(df, column), inplace= True)
+    elif impute_strategy[strategy] == 'zero':
+        df[column].fillna(0, inplace= True)    
     else:
         raise Exception("Unsupported impute strategy. Please select one of the following: ", impute_strategy)
-    return filled_df
-
-def remove_missing_values(df):
-    """
-    Remove rows containing missing values (NaN) from a DataFrame.
-
-    Parameters:
-        df (DataFrame): Input DataFrame.
-
-    Returns:
-        DataFrame: DataFrame with rows containing missing values removed.
-    """
-    return df.dropna()
+    
 
 def ordinal_encode(df, column, mapping=None):
     """
@@ -213,10 +188,9 @@ def ordinal_encode(df, column, mapping=None):
         if not isinstance(mapping, dict):
             raise ValueError("Mapping must be a dictionary.")
     
-    encoded_column = df[column].map(mapping)
-    return encoded_column, mapping
+    df[column] = df[column].map(mapping)
 
-def one_hot_encode(df, column):
+def one_hot_encode(df, column_name):
     """
     One-hot encode a categorical column.
 
@@ -227,10 +201,21 @@ def one_hot_encode(df, column):
     Returns:
         DataFrame: DataFrame with the one-hot encoded columns.
     """
-    encoded_columns = pd.get_dummies(df[column], prefix=column)
-    return encoded_columns
 
-def label_encode(df, column):
+    if column_name in df.columns:
+        # Perform one-hot encoding and concatenate with original DataFrame
+        df_encoded = pd.get_dummies(df[column_name], prefix=column_name)
+        
+        # Drop the original categorical column
+        df.drop(column_name, axis=1, inplace=True)
+        df = pd.concat([df, df_encoded], axis=1)
+        pdb.set_trace()
+        print("One-hot encoding applied to column ", column_name, " successfully.")
+        return df
+    else:
+        print(f"Column '{column_name}' not found in the DataFrame.")
+
+def label_encode(df, column_name):
     """
     Label encode a categorical column.
 
@@ -241,20 +226,98 @@ def label_encode(df, column):
     Returns:
         DataFrame: DataFrame with the label encoded column.
     """
-    encoded_column = df[column].astype('category').cat.codes
-    return encoded_column
+    # df[column] = df[column].astype('category').cat.codes
+    if column_name in df.columns:
+        # Get unique categories
+        categories = df[column_name].unique()
+        
+        # Create a mapping of categories to integers
+        mapping = {category: index for index, category in enumerate(categories)}
+        
+        # Replace categorical values with their corresponding integer codes
+        df[column_name] = df[column_name].map(mapping)
+        print(f"Label encoding applied to column '{column_name}' successfully.")
+    else:
+        print(f"Column '{column_name}' not found in the DataFrame.")
+
+# Function to apply on numerical columns
+def numerical_functions(column):
+    return {
+        'average': column.mean(),
+        'min': column.min(),
+        'max': column.max(),
+        'mode': column.mode().iloc[0]  # Mode
+    }
+
+# Function to apply on categorical columns
+def categorical_functions(column):
+    return {'mode': column.mode().iloc[0]}  # Mode
 
 def main():
-    df = read_file('cars.parquet', 'parquet', 'my_table')
-    print(average(df))
-    print(min(df))
-    print(max(df))
-    print(mode(df))
-    print(remove_missing_values(mode(df).loc[:,['model', 'mpg']]))
-    # Ordinal Encoding with automatic mapping generation
-    encoded_column = one_hot_encode(df, 'model')
+    filepath = input('Enter filepath name: ')
+    # Handling missing values for continuous variables
+    continuous_missing_handling = input('For continuous values, choose a missing value handling technique:\n1. Fill with mode\n2. Fill with mean\n3. Fill with zero\n4. Fill with minimum\n5. Fill with maximum\n0. Drop column\nChoose the technique number: ')
+
+    # Handling missing values for categorical variables
+    categorical_missing_handling = input('For categorical values, choose a missing value handling technique:\n1. Fill with mode\n0. Drop column\nChoose the technique number: ')
+
+    drop_columns_list = []
+    while True:
+        drop_column = input('Do you want to drop any column? y/n:')
+        if drop_column == 'y':
+            number_of_columns = input('Enter the columns separated by comma:\n')
+            user_list = number_of_columns.split(',')
+            # convert each item to int type
+            for i in range(len(user_list)):
+                # convert each item to int type
+                drop_columns_list.append(user_list[i])
+            break
+        elif drop_column == 'n':
+            break
+        else:
+            continue
     
-    print("Encoded column:")
-    print(encoded_column)
+    df = read_file(filepath)
+    if len(drop_columns_list) > 0:
+        df.drop(drop_columns_list, axis=1, inplace=True)
+
+    # Iterate over columns
+    for column_name, column in df.items():
+        if pd.api.types.is_numeric_dtype(column):  # Check if numerical
+            result = numerical_functions(column)
+        else:
+            result = categorical_functions(column)
+        print(f"For column '{column_name}': {result}")
+
+    if int(continuous_missing_handling) != 0:
+        for column_name, column in df.items():
+            if pd.api.types.is_numeric_dtype(column):
+                impute(df, column_name, int(continuous_missing_handling))
+
+    if int(categorical_missing_handling) == 1:
+        for column_name, column in df.items():
+            if not pd.api.types.is_numeric_dtype(column):
+                impute(df, column_name, int(categorical_missing_handling))
+
+    if int(continuous_missing_handling) == 0:
+        for column_name, column in df.items():
+            if pd.api.types.is_numeric_dtype(column):
+                df = df.dropna(subset=[column_name])
+
+    if int(categorical_missing_handling) == 0:
+        for column_name, column in df.items():
+           if not pd.api.types.is_numeric_dtype(column):
+               df = df.dropna(subset=[column_name])
+
+    for column_name, column in df.items():
+        if not pd.api.types.is_numeric_dtype(column):
+            categorical_encoding = input('For the following column, choose a categorical data encoding technique:1. Label encoding\n2. One-hot encoding\nChoose the technique number:')
+            if int(categorical_encoding) == 1:
+                label_encode(df, column_name)
+            else:   
+                df = one_hot_encode(df, column_name)
+
+    pdb.set_trace()
+
 if __name__ == "__main__":
     main()
