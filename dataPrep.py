@@ -209,7 +209,6 @@ def one_hot_encode(df, column_name):
         # Drop the original categorical column
         df.drop(column_name, axis=1, inplace=True)
         df = pd.concat([df, df_encoded], axis=1)
-        pdb.set_trace()
         print("One-hot encoding applied to column ", column_name, " successfully.")
         return df
     else:
@@ -316,8 +315,6 @@ def main():
                 label_encode(df, column_name)
             else:   
                 df = one_hot_encode(df, column_name)
-
-    pdb.set_trace()
 
 if __name__ == "__main__":
     main()
